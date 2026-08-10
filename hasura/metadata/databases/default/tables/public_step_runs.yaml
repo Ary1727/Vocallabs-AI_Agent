@@ -1,0 +1,32 @@
+table:
+  schema: public
+  name: step_runs
+object_relationships:
+  - name: workflow_run
+    using:
+      foreign_key_constraint_on: workflow_run_id
+  - name: workflow_step
+    using:
+      foreign_key_constraint_on: workflow_step_id
+select_permissions:
+  - role: owner
+    permission: &step_runs_select
+      columns:
+        [id, workflow_run_id, workflow_step_id, status, input, output, error,
+         attempt_count, approved_by, approved_at, started_at, finished_at]
+      filter: &step_runs_filter
+        workflow_run:
+          _exists:
+            _table: { schema: public, name: org_members }
+            _where:
+              _and:
+                - user_id: { _eq: X-Hasura-User-Id }
+                - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *step_runs_select
+  - role: viewer
+    permission: *step_runs_select
+# No insert/update/delete for app roles — same reasoning as workflow_runs.
+# The Action handler writes step_runs directly via the admin role as it
+# executes each step, which is what the subscription in the frontend
+# picks up live.

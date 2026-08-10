@@ -1,0 +1,56 @@
+table:
+  schema: public
+  name: workflow_triggers
+object_relationships:
+  - name: workflow
+    using:
+      foreign_key_constraint_on: workflow_id
+select_permissions:
+  - role: owner
+    permission: &triggers_select
+      columns: [id, workflow_id, type, config, created_at]
+      filter: &triggers_filter
+        workflow:
+          _exists:
+            _table: { schema: public, name: org_members }
+            _where:
+              _and:
+                - user_id: { _eq: X-Hasura-User-Id }
+                - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *triggers_select
+  - role: viewer
+    permission: *triggers_select
+insert_permissions:
+  # webhook triggers are an inbound endpoint external systems can call —
+  # owner-only, same reasoning as db_write/notify steps.
+  - role: owner
+    permission:
+      columns: [workflow_id, type, config]
+      check:
+        workflow:
+          _exists:
+            _table: { schema: public, name: org_members }
+            _where:
+              _and:
+                - user_id: { _eq: X-Hasura-User-Id }
+                - org_id: { _ceq: "$org_id" }
+                - role: { _eq: "owner" }
+  - role: editor
+    permission:
+      columns: [workflow_id, type, config]
+      check:
+        _and:
+          - type: { _neq: "webhook" }
+          - workflow:
+              _exists:
+                _table: { schema: public, name: org_members }
+                _where:
+                  _and:
+                    - user_id: { _eq: X-Hasura-User-Id }
+                    - org_id: { _ceq: "$org_id" }
+                    - role: { _in: ["owner", "editor"] }
+delete_permissions:
+  - role: owner
+    permission:
+      filter: *triggers_filter

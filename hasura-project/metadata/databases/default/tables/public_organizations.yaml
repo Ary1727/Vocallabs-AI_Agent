@@ -1,0 +1,36 @@
+table:
+  name: organizations
+  schema: public
+array_relationships:
+  - name: org_members
+    using:
+      foreign_key_constraint_on:
+        column: org_id
+        table:
+          name: org_members
+          schema: public
+select_permissions:
+  - role: editor
+    permission:
+      columns: []
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+    comment: ""
+  - role: owner
+    permission:
+      columns: []
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+    comment: ""
+  - role: viewer
+    permission:
+      columns: []
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+    comment: ""

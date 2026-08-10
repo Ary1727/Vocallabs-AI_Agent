@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0d0f14;
+  color: #e4e7eb;
+}
+a { color: #5b8cff; }
+input, select, textarea, button {
+  font-family: inherit;
+  background: #171a22;
+  color: #e4e7eb;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+button { cursor: pointer; }
+.container { max-width: 900px; margin: 0 auto; padding: 24px; }
+.card { background: #171a22; border: 1px solid #2a2f3a; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill-running { background: #2b3a55; color: #9dc0ff; }
+.pill-paused { background: #4a3d1f; color: #f0c14b; }
+.pill-succeeded { background: #17431f; color: #7ee27e; }
+.pill-failed { background: #4a1f1f; color: #ff9d9d; }
+.pill-pending { background: #2a2f3a; color: #9aa3af; }
+.quota-bar { height: 6px; background: #2a2f3a; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.quota-bar-fill { height: 100%; background: #5b8cff; }

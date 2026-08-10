@@ -1,0 +1,40 @@
+table:
+  schema: public
+  name: workflow_runs
+object_relationships:
+  - name: workflow
+    using:
+      foreign_key_constraint_on: workflow_id
+  - name: organization
+    using:
+      foreign_key_constraint_on: org_id
+array_relationships:
+  - name: step_runs
+    using:
+      foreign_key_constraint_on:
+        column: workflow_run_id
+        table: { schema: public, name: step_runs }
+select_permissions:
+  - role: owner
+    permission: &runs_select
+      columns: [id, workflow_id, org_id, status, triggered_by, trigger_type, started_at, finished_at]
+      filter: &runs_filter
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *runs_select
+  - role: viewer
+    permission: *runs_select
+# Deliberately no insert/update/delete permissions for owner/editor/viewer.
+# workflow_runs is only ever written by the triggerWorkflowRun and
+# approveStep Actions, which call Hasura with the admin secret from the
+# trusted action-handler service — not something a client role should be
+# able to do via a raw GraphQL mutation, since that would bypass the
+# quota check, the org/role verification, and the step-execution ordering
+# that all live in the Action handler. This is the concrete reason the
+# spec says the approval-gate decision "can't be a database permission
+# alone" — see action-handler/src for where that check actually lives.

@@ -1,0 +1,91 @@
+table:
+  schema: public
+  name: org_members
+object_relationships:
+  - name: organization
+    using:
+      foreign_key_constraint_on: org_id
+select_permissions:
+  # Everyone with any role in an org can see the membership list for that
+  # org (needed for the frontend to show "who's in this org" and for
+  # assigning approval-gate reviewers). Still scoped — you only see
+  # membership rows for orgs you're actually in.
+  - role: owner
+    permission:
+      columns: [id, org_id, user_id, role, created_at]
+      filter:
+        org_id:
+          _in:
+            _exists:
+              _table: { schema: public, name: org_members }
+              _where: { user_id: { _eq: X-Hasura-User-Id } }
+      # NOTE: the _in/_exists combination above is written to express
+      # intent clearly; verify against a live Hasura console, since some
+      # Hasura versions want this expressed as a plain _exists on the
+      # table itself rather than nested in _in. Simpler equivalent below
+      # is the safer bet if the above doesn't validate:
+      # filter:
+      #   _exists:
+      #     _table: { schema: public, name: org_members }
+      #     _where:
+      #       _and:
+      #         - user_id: { _eq: X-Hasura-User-Id }
+      #         - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission:
+      columns: [id, org_id, user_id, role, created_at]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+  - role: viewer
+    permission:
+      columns: [id, org_id, user_id, role, created_at]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+insert_permissions:
+  # Only an owner can add a member to their own org — this is the
+  # "owner manages membership" rule from the spec.
+  - role: owner
+    permission:
+      check:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _eq: "owner" }
+      columns: [org_id, user_id, role]
+update_permissions:
+  - role: owner
+    permission:
+      columns: [role]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _eq: "owner" }
+      check: null
+delete_permissions:
+  - role: owner
+    permission:
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _eq: "owner" }

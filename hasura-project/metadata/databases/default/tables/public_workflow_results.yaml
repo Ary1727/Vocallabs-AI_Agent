@@ -1,0 +1,3 @@
+table:
+  name: workflow_results
+  schema: public

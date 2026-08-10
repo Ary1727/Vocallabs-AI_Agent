@@ -1,0 +1,73 @@
+table:
+  schema: public
+  name: workflows
+object_relationships:
+  - name: organization
+    using:
+      foreign_key_constraint_on: org_id
+array_relationships:
+  - name: workflow_steps
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { schema: public, name: workflow_steps }
+  - name: workflow_triggers
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { schema: public, name: workflow_triggers }
+  - name: workflow_runs
+    using:
+      foreign_key_constraint_on:
+        column: workflow_id
+        table: { schema: public, name: workflow_runs }
+select_permissions:
+  - role: owner
+    permission: &org_scoped_select
+      columns: [id, org_id, name, description, created_by, created_at, updated_at]
+      filter: &org_scoped_filter
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *org_scoped_select
+  - role: viewer
+    permission: *org_scoped_select
+insert_permissions:
+  # owner and editor can create workflows; viewer cannot (spec: viewer is
+  # read-only). Both still scoped to their own org via the check.
+  - role: owner
+    permission: &org_scoped_insert
+      columns: [org_id, name, description, created_by]
+      check:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _in: ["owner", "editor"] }
+  - role: editor
+    permission: *org_scoped_insert
+update_permissions:
+  - role: owner
+    permission: &org_scoped_update
+      columns: [name, description]
+      filter: *org_scoped_filter
+      check: null
+  - role: editor
+    permission: *org_scoped_update
+delete_permissions:
+  - role: owner
+    permission:
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _eq: "owner" }

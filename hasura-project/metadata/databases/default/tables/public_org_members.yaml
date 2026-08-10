@@ -1,0 +1,3 @@
+table:
+  name: org_members
+  schema: public

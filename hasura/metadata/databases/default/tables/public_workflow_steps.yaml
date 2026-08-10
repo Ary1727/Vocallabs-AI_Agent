@@ -1,0 +1,67 @@
+table:
+  schema: public
+  name: workflow_steps
+object_relationships:
+  - name: workflow
+    using:
+      foreign_key_constraint_on: workflow_id
+select_permissions:
+  - role: owner
+    permission: &steps_select
+      columns: [id, workflow_id, step_order, type, config, created_at]
+      filter: &steps_filter
+        workflow:
+          _exists:
+            _table: { schema: public, name: org_members }
+            _where:
+              _and:
+                - user_id: { _eq: X-Hasura-User-Id }
+                - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *steps_select
+  - role: viewer
+    permission: *steps_select
+insert_permissions:
+  # Layer 2 gating lives here: db_write and notify steps reach outside the
+  # sandbox (a real database write, a real Slack/email send), so only an
+  # owner may add one. Editors can add any OTHER step type. This is the
+  # concrete Hasura-level enforcement of "some step types need tighter
+  # control" from the spec — expressed as two separate role permissions
+  # rather than one rule with a runtime branch, since Hasura permissions
+  # are inherently per-role.
+  - role: owner
+    permission:
+      columns: [workflow_id, step_order, type, config]
+      check:
+        workflow:
+          _exists:
+            _table: { schema: public, name: org_members }
+            _where:
+              _and:
+                - user_id: { _eq: X-Hasura-User-Id }
+                - org_id: { _ceq: "$org_id" }
+                - role: { _eq: "owner" }
+  - role: editor
+    permission:
+      columns: [workflow_id, step_order, type, config]
+      check:
+        _and:
+          - type: { _nin: ["db_write", "notify"] }
+          - workflow:
+              _exists:
+                _table: { schema: public, name: org_members }
+                _where:
+                  _and:
+                    - user_id: { _eq: X-Hasura-User-Id }
+                    - org_id: { _ceq: "$org_id" }
+                    - role: { _in: ["owner", "editor"] }
+update_permissions:
+  - role: owner
+    permission:
+      columns: [step_order, config]
+      filter: *steps_filter
+      check: null
+delete_permissions:
+  - role: owner
+    permission:
+      filter: *steps_filter

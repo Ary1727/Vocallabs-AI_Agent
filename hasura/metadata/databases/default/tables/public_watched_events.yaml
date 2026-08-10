@@ -1,0 +1,44 @@
+table:
+  schema: public
+  name: watched_events
+select_permissions:
+  - role: owner
+    permission: &events_select
+      columns: [id, org_id, source_table, payload, created_at]
+      filter: &events_filter
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+  - role: editor
+    permission: *events_select
+insert_permissions:
+  - role: owner
+    permission: &events_insert
+      columns: [org_id, source_table, payload]
+      check:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$org_id" }
+              - role: { _in: ["owner", "editor"] }
+  - role: editor
+    permission: *events_insert
+event_triggers:
+  - name: watched_events_insert
+    definition:
+      enable_manual: false
+      insert:
+        columns: "*"
+    retry_conf:
+      num_retries: 3
+      interval_sec: 10
+      timeout_sec: 30
+    webhook: "{{ACTION_HANDLER_BASE_URL}}/webhooks/database-event"
+    headers:
+      - name: X-Webhook-Secret
+        value_from_env: EVENT_TRIGGER_SECRET

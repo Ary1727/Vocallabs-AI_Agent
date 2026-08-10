@@ -1,0 +1,53 @@
+table:
+  schema: public
+  name: organizations
+array_relationships:
+  - name: org_members
+    using:
+      foreign_key_constraint_on:
+        column: org_id
+        table:
+          schema: public
+          name: org_members
+  - name: workflows
+    using:
+      foreign_key_constraint_on:
+        column: org_id
+        table:
+          schema: public
+          name: workflows
+select_permissions:
+  - role: owner
+    permission:
+      columns: [id, name, quota_limit, quota_used, quota_period_start, created_at]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$id" }
+  - role: editor
+    permission:
+      columns: [id, name, quota_limit, quota_used, quota_period_start, created_at]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$id" }
+  - role: viewer
+    permission:
+      columns: [id, name, quota_limit, quota_used, quota_period_start, created_at]
+      filter:
+        _exists:
+          _table: { schema: public, name: org_members }
+          _where:
+            _and:
+              - user_id: { _eq: X-Hasura-User-Id }
+              - org_id: { _ceq: "$id" }
+# No insert/update/delete permissions on organizations for any app-level
+# role — org creation/quota changes are an admin/backend concern, not
+# something owner/editor/viewer should be able to do via the GraphQL API
+# directly. Deliberate omission, not an oversight.

@@ -1,0 +1,12 @@
+- name: scheduled_workflow_tick
+  webhook: "{{ACTION_HANDLER_BASE_URL}}/webhooks/scheduler-tick"
+  schedule: "* * * * *"
+  include_in_metadata: true
+  payload: {}
+  retry_conf:
+    num_retries: 1
+    timeout_seconds: 30
+    tolerance_seconds: 21600
+  headers:
+    - name: X-Webhook-Secret
+      value_from_env: EVENT_TRIGGER_SECRET

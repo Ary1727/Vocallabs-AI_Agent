@@ -1,0 +1,56 @@
+actions:
+  - name: triggerWorkflowRun
+    definition:
+      kind: synchronous
+      handler: "{{ACTION_HANDLER_BASE_URL}}/actions/trigger-workflow-run"
+      forward_client_headers: true
+      headers:
+        - name: X-Webhook-Secret
+          value_from_env: ACTION_HANDLER_SECRET
+      request_transform:
+        version: 2
+    permissions:
+      - role: owner
+      - role: editor
+      # deliberately no viewer permission — "viewer, cannot trigger a run"
+      # is enforced here at the Action level (Hasura won't even forward
+      # the request), AND re-checked inside the handler itself, since the
+      # handler cannot assume the only caller is Hasura's permission
+      # layer — see DECISIONS.md on defense in depth.
+  - name: approveStep
+    definition:
+      kind: synchronous
+      handler: "{{ACTION_HANDLER_BASE_URL}}/actions/approve-step"
+      forward_client_headers: true
+      headers:
+        - name: X-Webhook-Secret
+          value_from_env: ACTION_HANDLER_SECRET
+      request_transform:
+        version: 2
+    permissions:
+      - role: owner
+      - role: editor
+
+custom_types:
+  input_objects:
+    - name: TriggerWorkflowRunInput
+      fields:
+        - name: workflow_id
+          type: uuid!
+    - name: ApproveStepInput
+      fields:
+        - name: step_run_id
+          type: uuid!
+  objects:
+    - name: TriggerWorkflowRunOutput
+      fields:
+        - name: workflow_run_id
+          type: uuid!
+        - name: status
+          type: String!
+    - name: ApproveStepOutput
+      fields:
+        - name: step_run_id
+          type: uuid!
+        - name: status
+          type: String!
