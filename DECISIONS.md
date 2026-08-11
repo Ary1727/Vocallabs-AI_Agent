@@ -84,20 +84,101 @@ double-approval a `409`, not a silent no-op), records `approved_by`/
 `approved_at`, flips the run back to `running`, and re-enters
 `executeStepsInOrder` from the next step by `step_order`.
 
-## Two real bugs this caught, found by actually running the tests against real Postgres
+## Addendum: what live deployment against real infrastructure surfaced
 
-1. **Branch execution bug**: an early version of `executeStepsInOrder`
-   fell through to `step_order + 1` after executing a `conditional_branch`
-   target step — which, when both branch targets happened to sit at
-   adjacent step_orders (as in the integration test), meant the workflow
-   silently executed *both* sides of the conditional instead of the one
-   the condition selected. Fixed by tracking whether the current step was
-   reached via a branch redirect and treating branch targets as terminal
-   rather than falling through — a real, disclosed scope decision (this
-   model doesn't support merging control flow back after a branch), not
-   an accident.
-2. **Condition evaluator path bug**: `resolvePath`'s special-casing of
-   `.length` for arrays/strings broke the more common case of a plain
-   object with a field literally named `length` (e.g. `{ length: 150 }`
-   as a data field) — caught by the evaluator's own first test case.
-   Both are described in more detail in code comments at their fix sites.
+Everything above this line was written and tested locally, or against my own
+mock server. This section documents what changed once the app was deployed
+to real, permanent infrastructure (Render for the action-handler, Vercel
+for the frontend) and exercised through the actual browser UI rather than
+GraphiQL with manually-set headers. Several real, distinct bugs surfaced —
+each is listed with root cause and fix, not glossed over.
+
+### Bug 1: nhost's default JWT role vs. custom app roles were never connected
+
+nhost's Auth system issues its own JWT with `x-hasura-default-role` set to
+a generic `user` role for every signed-up account — completely independent
+of this app's `org_role` enum (`owner`/`editor`/`viewer`) and the
+`org_members` table that's supposed to be the source of truth for
+permissions. Every Hasura permission filter in this project checks
+`X-Hasura-User-Id` against `org_members`, but Hasura never even attempts
+those filters unless the caller's *role* is one it recognizes — and
+`user` was never granted any permissions at all.
+
+**Fix:** nhost/Hasura's Auth schema includes `auth.roles` and
+`auth.user_roles` tables, plus a `default_role` column on `auth.users`,
+specifically for mapping real users to custom app-level roles. Registering
+the three roles there and setting a user's `default_role` to `owner`
+correctly changes what the issued JWT claims — confirmed by decoding the
+token directly (`x-hasura-default-role":"owner"` after the fix, `"user"`
+before).
+
+**Known limitation this leaves:** `default_role` is one static role per
+user, not scoped per-organization. A user who is `owner` in one org and
+`viewer` in another would need the frontend to explicitly override the
+role per-request (Hasura supports this via an `x-hasura-role` header the
+client can set, chosen from the token's `allowed_roles` list) — the
+current frontend doesn't do this, since the demo scenario only needed one
+role per user. This is a real product gap, not something I'd claim was
+handled.
+
+### Bug 2: `workflows`' downward relationships were never tracked
+
+`organization` (workflow → its parent org) was tracked, but the reverse
+relationships — `workflow_steps`, `workflow_triggers`, `workflow_runs`
+(workflow → its children) — were left as Hasura's "suggested, untracked"
+state. A table having a select permission does not make its relationships
+to other tables automatically traversable in GraphQL; each relationship
+has to be explicitly tracked. This silently broke the main workflow list
+query, which nests all three in one request.
+
+### Bug 3: incomplete column allow-lists on nearly every permission
+
+This was the single most common failure mode today, surfacing repeatedly
+across `organizations`, `org_members`, `workflows`, `workflow_steps`,
+`workflow_triggers`, `workflow_runs`, and `step_runs`. Two distinct
+column-permission scopes exist per table and were inconsistently
+configured:
+
+- **Select column permissions** control both what a query can filter on
+  (`where: { user_id: ... }` fails with "field not found" if `user_id`
+  isn't in the select allow-list, even though it's a perfectly real
+  column) and what an insert mutation is allowed to *return* (`insert_...
+  { id }` fails the same way if `id` isn't select-permitted, even when
+  it's correctly insert-permitted).
+- **Insert column permissions** separately control what fields a mutation
+  is allowed to *write*.
+
+Getting a table fully working required both to have every relevant column
+checked, not just one. This was diagnosed by decoding each error's target
+type name — `_insert_input` errors meant "check insert columns,"
+unqualified type names (`workflow_steps`, `step_runs`) meant "check select
+columns" — and fixed table by table until the live app worked end to end.
+
+### Bug 4: GraphQL enum type mismatch in the frontend
+
+`workflow_steps.type` and `workflow_triggers.type` are Postgres enums
+(`step_type`, `trigger_type`), but `lib/graphql.ts`'s mutations declared
+their GraphQL variables as plain `String!`. Hasura correctly rejected this
+as a type mismatch once the mutation actually reached it (this was masked
+earlier by the column-permission bugs above, which failed before type
+checking even ran). Fixed by declaring the variables with the correct
+enum types; verified with a clean typecheck and a successful production
+build before redeploying.
+
+### What this proves, cumulatively
+
+Every one of these bugs was found by actually running the app against
+real infrastructure and reading the actual error Hasura returned — not by
+guessing, and not by assuming the first version that compiled was correct.
+The end state, verified live through the deployed frontend at
+`https://vocallabs-ai-agent.vercel.app`, not just GraphiQL:
+
+- Real login → correctly-scoped JWT → org-filtered workflow list
+- A workflow built through the UI (name, steps of multiple types, trigger)
+  saves correctly
+- A run's live status streams over a GraphQL subscription with no
+  page refresh, showing each step's real output as it completes
+- The approval-gate pause/resume cycle, cross-org isolation block, and
+  quota enforcement were all independently re-verified via direct
+  `psql` queries against the same production database the app uses —
+  not just trusting API responses.
