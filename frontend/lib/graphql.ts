@@ -47,7 +47,7 @@ export const CREATE_WORKFLOW = gql`
 `;
 
 export const ADD_WORKFLOW_STEP = gql`
-  mutation AddWorkflowStep($workflowId: uuid!, $stepOrder: Int!, $type: String!, $config: jsonb!) {
+  mutation AddWorkflowStep($workflowId: uuid!, $stepOrder: Int!, $type: step_type!, $config: jsonb!) {
     insert_workflow_steps_one(object: { workflow_id: $workflowId, step_order: $stepOrder, type: $type, config: $config }) {
       id
       step_order
@@ -57,7 +57,7 @@ export const ADD_WORKFLOW_STEP = gql`
 `;
 
 export const ADD_WORKFLOW_TRIGGER = gql`
-  mutation AddWorkflowTrigger($workflowId: uuid!, $type: String!, $config: jsonb!) {
+  mutation AddWorkflowTrigger($workflowId: uuid!, $type: trigger_type!, $config: jsonb!) {
     insert_workflow_triggers_one(object: { workflow_id: $workflowId, type: $type, config: $config }) {
       id
       type
